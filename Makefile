@@ -7,6 +7,8 @@ BINARY_NAME=g0
 BUILD_DIR=.
 PKG_DIR=dist/pkg
 DMG_DIR=dist/dmg
+WINDOWS_DIR=dist/windows
+LINUX_DIR=dist/linux
 
 # Go parameters
 GOCMD=go
@@ -29,16 +31,23 @@ PKG_ORGANIZATION=g0
 PKG_REPO_URL=https://github.com/calummacc/g0
 PKG_AUTHOR=Calumma Team
 
-.PHONY: all build clean run test help pkg dmg install-pkg
+.PHONY: all build build-macos clean run test help pkg pkg-macos dmg install-pkg build-windows pkg-windows build-linux pkg-linux
 
 # Default target
 all: clean build
 
-# Build the application
+# Build the application (local platform)
 build:
 	@echo "Building $(BINARY_NAME)..."
 	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
 	@echo "Build complete!"
+
+# Build for macOS
+build-macos:
+	@echo "Building for macOS..."
+	@GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
+	@chmod +x $(BUILD_DIR)/$(BINARY_NAME)
+	@echo "macOS build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 # Clean build artifacts
 clean:
@@ -60,7 +69,11 @@ test: clean build run
 	@echo "Test complete!"
 
 # Build macOS installer package (.pkg)
-pkg: build
+pkg: build-macos
+	@$(MAKE) pkg-macos
+
+# Build macOS installer package (.pkg) - explicit target
+pkg-macos: build-macos
 	@echo "Building macOS installer package..."
 	@mkdir -p $(PKG_DIR)/usr/local/bin
 	@cp $(BUILD_DIR)/$(BINARY_NAME) $(PKG_DIR)/usr/local/bin/
@@ -138,20 +151,63 @@ install-pkg: pkg
 # Clean package artifacts
 clean-pkg:
 	@echo "Cleaning package artifacts..."
-	@rm -rf dist $(PKG_DIR) $(DMG_DIR)
+	@rm -rf dist $(PKG_DIR) $(DMG_DIR) $(WINDOWS_DIR) $(LINUX_DIR)
 	@echo "Package artifacts cleaned!"
+
+# Build for Linux
+build-linux:
+	@echo "Building for Linux..."
+	@mkdir -p $(LINUX_DIR)
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(LINUX_DIR)/$(BINARY_NAME) main.go
+	@chmod +x $(LINUX_DIR)/$(BINARY_NAME)
+	@echo "Linux build complete: $(LINUX_DIR)/$(BINARY_NAME)"
+
+# Build Linux package (tar.gz file with binary and README)
+pkg-linux: build-linux
+	@echo "Creating Linux package..."
+	@cp README.md $(LINUX_DIR)/
+	@cp LICENSE $(LINUX_DIR)/ 2>/dev/null || true
+	@cd dist && tar -czf $(PKG_NAME)-$(PKG_VERSION)-linux-amd64.tar.gz -C linux $(BINARY_NAME) README.md LICENSE 2>/dev/null || tar -czf $(PKG_NAME)-$(PKG_VERSION)-linux-amd64.tar.gz -C linux $(BINARY_NAME) README.md
+	@echo "Linux package created: dist/$(PKG_NAME)-$(PKG_VERSION)-linux-amd64.tar.gz"
+	@echo "  Binary: $(BINARY_NAME)"
+	@echo "  Version: $(PKG_VERSION)"
+	@echo "  Repository: $(PKG_REPO_URL)"
+
+# Build for Windows
+build-windows:
+	@echo "Building for Windows..."
+	@mkdir -p $(WINDOWS_DIR)
+	@GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(WINDOWS_DIR)/$(BINARY_NAME).exe main.go
+	@echo "Windows build complete: $(WINDOWS_DIR)/$(BINARY_NAME).exe"
+
+# Build Windows package (zip file with binary and README)
+pkg-windows: build-windows
+	@echo "Creating Windows package..."
+	@cp README.md $(WINDOWS_DIR)/
+	@cp LICENSE $(WINDOWS_DIR)/ 2>/dev/null || true
+	@cd $(WINDOWS_DIR) && zip -r ../$(PKG_NAME)-$(PKG_VERSION)-windows-amd64.zip . -x "*.DS_Store"
+	@echo "Windows package created: dist/$(PKG_NAME)-$(PKG_VERSION)-windows-amd64.zip"
+	@echo "  Binary: $(BINARY_NAME).exe"
+	@echo "  Version: $(PKG_VERSION)"
+	@echo "  Repository: $(PKG_REPO_URL)"
 
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  make build      - Build the application"
+	@echo "  make build      - Build the application (local platform)"
 	@echo "  make clean      - Remove build artifacts"
 	@echo "  make run        - Run the load test"
 	@echo "  make test       - Clean, build, and run test"
 	@echo "  make all        - Clean and build"
-	@echo "  make pkg        - Build macOS installer package (.pkg)"
+	@echo "  make build-macos - Build macOS binary"
+	@echo "  make pkg-macos - Build macOS installer package (.pkg)"
+	@echo "  make pkg        - Alias for pkg-macos"
 	@echo "  make dmg        - Build macOS disk image (.dmg)"
 	@echo "  make install-pkg - Install the package (requires sudo)"
 	@echo "  make clean-pkg  - Clean package artifacts"
+	@echo "  make build-windows - Build Windows binary (.exe)"
+	@echo "  make pkg-windows - Build Windows package (.zip)"
+	@echo "  make build-linux - Build Linux binary"
+	@echo "  make pkg-linux - Build Linux package (.tar.gz)"
 	@echo "  make help       - Show this help message"
 
