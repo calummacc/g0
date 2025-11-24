@@ -2,10 +2,27 @@ package printer
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/calummacc/g0/internal/runner"
 )
+
+// PrintLogo prints the g0 logo
+func PrintLogo() {
+	logo := `
+	\033[36m    ______      \033[33m__ 
+	\033[36m   / ____/___ _ \033[33m/ /____  ____ 
+	\033[36m  / / __/ __  /\033[33m / ___/ / __ \
+	\033[36m / /_/ / /_/ /\033[33m (__  ) / /_/ /
+	\033[36m \____/\__,_/\033[33m /____(_)\____/ 
+	\033[0m
+	\033[32m            g0 — High-Performance Load Tester\033[0m
+	`
+	fmt.Print(logo)
+	fmt.Println()
+}
 
 // PrintTestStart prints the test configuration
 func PrintTestStart(url string, concurrency int, duration time.Duration) {
@@ -43,6 +60,43 @@ func PrintResults(summary *runner.Summary) {
 	}
 }
 
+// PrintProgress displays a progress bar with current test statistics
+func PrintProgress(elapsed time.Duration, totalDuration time.Duration, stats *runner.ProgressStats) {
+	// Calculate progress percentage
+	progress := float64(elapsed) / float64(totalDuration)
+	if progress > 1.0 {
+		progress = 1.0
+	}
+
+	// Create progress bar (50 characters wide)
+	barWidth := 50
+	filled := int(progress * float64(barWidth))
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+	// Calculate current RPS
+	var rps float64
+	if elapsed > 0 {
+		rps = float64(stats.TotalRequests) / elapsed.Seconds()
+	}
+
+	// Format elapsed and remaining time
+	elapsedStr := formatDurationShort(elapsed)
+	remaining := totalDuration - elapsed
+	if remaining < 0 {
+		remaining = 0
+	}
+	remainingStr := formatDurationShort(remaining)
+
+	// Clear previous line and print progress
+	fmt.Fprintf(os.Stderr, "\r[%s] %.1f%% | Elapsed: %s | Remaining: %s | Requests: %d | Success: %d | Failed: %d | RPS: %.1f",
+		bar, progress*100, elapsedStr, remainingStr, stats.TotalRequests, stats.SuccessRequests, stats.FailedRequests, rps)
+}
+
+// ClearProgress clears the progress line
+func ClearProgress() {
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 150))
+}
+
 // formatDuration formats a duration in a human-readable way
 func formatDuration(d time.Duration) string {
 	if d < time.Microsecond {
@@ -55,3 +109,14 @@ func formatDuration(d time.Duration) string {
 	return d.Round(time.Millisecond).String()
 }
 
+// formatDurationShort formats a duration in a short, readable way for progress display
+func formatDurationShort(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%.0fms", float64(d.Nanoseconds())/1000000.0)
+	} else if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	minutes := int(d.Minutes())
+	seconds := int(d.Seconds()) % 60
+	return fmt.Sprintf("%dm%ds", minutes, seconds)
+}

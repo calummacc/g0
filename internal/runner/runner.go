@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/calummacc/g0/internal/httpclient"
@@ -17,8 +18,29 @@ type Config struct {
 	Headers     map[string]string
 }
 
+// RunResult contains both the stats instance (for progress monitoring) and the final summary
+type RunResult struct {
+	Stats   *Stats
+	Summary *Summary
+}
+
 // Run executes a load test with the given configuration
 func Run(config Config) (*Summary, error) {
+	result, err := RunWithStats(config)
+	if err != nil {
+		return nil, err
+	}
+	return result.Summary, nil
+}
+
+// RunWithStats executes a load test and returns both stats (for progress monitoring) and summary
+// statsChan can be used to receive the stats instance immediately after creation (for progress monitoring)
+func RunWithStats(config Config) (*RunResult, error) {
+	return RunWithStatsAndChannel(config, nil)
+}
+
+// RunWithStatsAndChannel executes a load test and optionally sends stats instance to a channel when created
+func RunWithStatsAndChannel(config Config, statsChan chan<- *Stats) (*RunResult, error) {
 	// Create HTTP client
 	client := httpclient.New()
 
@@ -39,6 +61,15 @@ func Run(config Config) (*Summary, error) {
 
 	// Create stats collector
 	stats := NewStats()
+
+	// Send stats instance to channel if provided (for progress monitoring)
+	if statsChan != nil {
+		select {
+		case statsChan <- stats:
+		default:
+			// Channel is full or closed, continue anyway
+		}
+	}
 
 	// Start stats collector goroutine
 	statsDone := make(chan struct{})
@@ -65,19 +96,27 @@ func Run(config Config) (*Summary, error) {
 		}
 	}()
 
+	// Use WaitGroup to wait for all workers to finish
+	var wg sync.WaitGroup
+
 	// Start workers
 	for i := 0; i < config.Concurrency; i++ {
+		wg.Add(1)
 		worker := NewWorker(client, request, results)
-		go worker.Start(ctx)
+		go func() {
+			defer wg.Done()
+			worker.Start(ctx)
+		}()
 	}
 
 	// Wait for duration to complete
 	<-ctx.Done()
 
-	// Give workers a moment to stop sending (they check ctx.Done() before sending)
-	time.Sleep(50 * time.Millisecond)
+	// Wait for all workers to finish (they will stop when ctx.Done() is triggered)
+	wg.Wait()
 
 	// Close results channel to signal stats collector to finish
+	// This is safe now because all workers have stopped
 	close(results)
 
 	// Wait for stats collector to finish processing
@@ -89,6 +128,9 @@ func Run(config Config) (*Summary, error) {
 	// Get summary
 	summary := stats.GetSummary()
 
-	return &summary, nil
+	return &RunResult{
+		Stats:   stats,
+		Summary: &summary,
+	}, nil
 }
 

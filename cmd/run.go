@@ -67,6 +67,9 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 		headerMap[key] = value
 	}
 
+	// Print logo
+	printer.PrintLogo()
+
 	// Print test configuration
 	printer.PrintTestStart(url, concurrency, testDuration)
 
@@ -80,13 +83,86 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 		Headers:     headerMap,
 	}
 
-	stats, err := runner.Run(config)
-	if err != nil {
+	// Channel to receive test result
+	resultChan := make(chan *runner.RunResult, 1)
+	errChan := make(chan error, 1)
+	statsChan := make(chan *runner.Stats, 1)
+
+	// Start progress monitoring in a goroutine
+	progressDone := make(chan struct{})
+	startTime := time.Now()
+	var stats *runner.Stats
+
+	// Start the test in a goroutine
+	go func() {
+		result, err := runner.RunWithStatsAndChannel(config, statsChan)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		resultChan <- result
+	}()
+
+	// Progress monitoring goroutine
+	go func() {
+		// Wait for stats to be available
+		select {
+		case s := <-statsChan:
+			stats = s
+		case <-time.After(2 * time.Second):
+			// Stats not available yet, continue anyway (shouldn't happen normally)
+		}
+
+		ticker := time.NewTicker(100 * time.Millisecond) // Update every 100ms
+		defer ticker.Stop()
+
+		for {
+			select {
+			case s := <-statsChan:
+				// Stats instance is now available (if not received earlier)
+				stats = s
+			case <-ticker.C:
+				elapsed := time.Since(startTime)
+				if elapsed >= testDuration {
+					// Test duration reached, stop updating
+					return
+				}
+				if stats != nil {
+					progressStats := stats.GetProgressStats()
+					printer.PrintProgress(elapsed, testDuration, &progressStats)
+				} else {
+					// Stats not available yet, show basic progress with zero stats
+					zeroStats := runner.ProgressStats{}
+					printer.PrintProgress(elapsed, testDuration, &zeroStats)
+				}
+			case <-progressDone:
+				return
+			}
+		}
+	}()
+
+	// Wait for test to complete
+	var result *runner.RunResult
+	select {
+	case err := <-errChan:
+		close(progressDone)
+		time.Sleep(50 * time.Millisecond)
+		printer.ClearProgress()
 		return fmt.Errorf("load test failed: %w", err)
+	case result = <-resultChan:
+		// Test completed
 	}
 
+	// Stop progress updates
+	close(progressDone)
+	time.Sleep(150 * time.Millisecond) // Give progress goroutine time to finish and print final update
+
+	// Clear progress line
+	printer.ClearProgress()
+	fmt.Println() // Add a newline after clearing progress
+
 	// Print results
-	printer.PrintResults(stats)
+	printer.PrintResults(result.Summary)
 
 	return nil
 }

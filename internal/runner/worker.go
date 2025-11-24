@@ -24,26 +24,34 @@ func NewWorker(client *httpclient.Client, request httpclient.Request, results ch
 
 // Start begins the worker loop, sending requests until ctx is cancelled
 func (w *Worker) Start(ctx context.Context) {
+	defer func() {
+		// Recover from any panic (e.g., sending on closed channel)
+		// This should not happen with proper synchronization, but provides safety
+		recover()
+	}()
+
 	for {
+		// Check if context is done before starting a new request
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			// Send request
-			resp := w.client.Do(w.request)
+		}
 
-			// Send result to channel
-			result := Result{
-				Latency:    resp.Latency,
-				StatusCode: resp.StatusCode,
-				Error:      resp.Error,
-			}
+		// Send request
+		resp := w.client.Do(w.request)
 
-			select {
-			case w.results <- result:
-			case <-ctx.Done():
-				return
-			}
+		// Check context again before sending result (request might have taken time)
+		select {
+		case <-ctx.Done():
+			// Context cancelled, don't send result
+			return
+		case w.results <- Result{
+			Latency:    resp.Latency,
+			StatusCode: resp.StatusCode,
+			Error:      resp.Error,
+		}:
+			// Successfully sent result, continue loop
 		}
 	}
 }

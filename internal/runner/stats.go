@@ -119,6 +119,25 @@ func (s *Stats) GetSummary() Summary {
 	}
 }
 
+// ProgressStats contains current progress statistics (for real-time display)
+type ProgressStats struct {
+	TotalRequests   int64
+	SuccessRequests int64
+	FailedRequests  int64
+}
+
+// GetProgressStats returns current progress statistics without locking for long operations
+func (s *Stats) GetProgressStats() ProgressStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return ProgressStats{
+		TotalRequests:   s.TotalRequests,
+		SuccessRequests: s.SuccessRequests,
+		FailedRequests:  s.FailedRequests,
+	}
+}
+
 // Summary contains aggregated statistics
 type Summary struct {
 	TotalRequests    int64
