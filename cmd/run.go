@@ -90,6 +90,7 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 
 	// Start progress monitoring in a goroutine
 	progressDone := make(chan struct{})
+	testCompleted := make(chan struct{}) // Signal when test is actually done
 	startTime := time.Now()
 	var stats *runner.Stats
 
@@ -122,20 +123,34 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 				// Stats instance is now available (if not received earlier)
 				stats = s
 			case <-ticker.C:
-				elapsed := time.Since(startTime)
-				if elapsed >= testDuration {
-					// Test duration reached, stop updating
+				// Check if test completed first - if so, stop immediately
+				select {
+				case <-testCompleted:
 					return
-				}
-				if stats != nil {
-					progressStats := stats.GetProgressStats()
-					printer.PrintProgress(elapsed, testDuration, &progressStats)
-				} else {
-					// Stats not available yet, show basic progress with zero stats
-					zeroStats := runner.ProgressStats{}
-					printer.PrintProgress(elapsed, testDuration, &zeroStats)
+				case <-progressDone:
+					return
+				default:
+					// Test still running, continue updating
+					elapsed := time.Since(startTime)
+					// Only update if elapsed < testDuration (don't show 100% from progress goroutine)
+					// Main goroutine will handle 100% and "Generating report" display
+					if elapsed < testDuration {
+						if stats != nil {
+							progressStats := stats.GetProgressStats()
+							printer.PrintProgress(elapsed, testDuration, &progressStats, 0)
+						} else {
+							// Stats not available yet, show basic progress with zero stats
+							zeroStats := runner.ProgressStats{}
+							printer.PrintProgress(elapsed, testDuration, &zeroStats, 0)
+						}
+					}
+					// If elapsed >= testDuration, don't update anymore - let main goroutine handle it
 				}
 			case <-progressDone:
+				// Stop immediately when test is done
+				return
+			case <-testCompleted:
+				// Test completed, stop updating
 				return
 			}
 		}
@@ -150,16 +165,29 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 		printer.ClearProgress()
 		return fmt.Errorf("load test failed: %w", err)
 	case result = <-resultChan:
-		// Test completed
+		// Test completed - signal to stop progress updates immediately
+		// Close testCompleted first to signal completion
+		close(testCompleted)
+		// Then close progressDone to ensure goroutine stops
+		close(progressDone)
+		// Wait longer to ensure all ticker events are processed and goroutine has stopped
+		time.Sleep(250 * time.Millisecond)
+		
+		// Show final "Generating report..." message once
+		if stats != nil {
+			progressStats := stats.GetProgressStats()
+			var rps float64
+			if testDuration > 0 {
+				rps = float64(progressStats.TotalRequests) / testDuration.Seconds()
+			}
+			printer.PrintGeneratingReport(&progressStats, rps)
+			time.Sleep(300 * time.Millisecond) // Show message briefly
+		}
+		
+		// Clear progress line
+		printer.ClearProgress()
+		fmt.Println() // Add a newline after clearing progress
 	}
-
-	// Stop progress updates
-	close(progressDone)
-	time.Sleep(150 * time.Millisecond) // Give progress goroutine time to finish and print final update
-
-	// Clear progress line
-	printer.ClearProgress()
-	fmt.Println() // Add a newline after clearing progress
 
 	// Print results
 	printer.PrintResults(result.Summary)

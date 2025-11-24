@@ -12,14 +12,12 @@ import (
 // PrintLogo prints the g0 logo
 func PrintLogo() {
 	logo := `
-	\033[36m    ______      \033[33m__ 
-	\033[36m   / ____/___ _ \033[33m/ /____  ____ 
-	\033[36m  / / __/ __  /\033[33m / ___/ / __ \
-	\033[36m / /_/ / /_/ /\033[33m (__  ) / /_/ /
-	\033[36m \____/\__,_/\033[33m /____(_)\____/ 
-	\033[0m
-	\033[32m            g0 — High-Performance Load Tester\033[0m
-	`
+	┌───────────────────────────────┐
+	│             g0                │
+	│    Mini High-Speed Load Tool  │
+	└───────────────────────────────┘
+  	`
+
 	fmt.Print(logo)
 	fmt.Println()
 }
@@ -61,15 +59,18 @@ func PrintResults(summary *runner.Summary) {
 }
 
 // PrintProgress displays a progress bar with current test statistics
-func PrintProgress(elapsed time.Duration, totalDuration time.Duration, stats *runner.ProgressStats) {
+// It updates in-place on the same line using carriage return
+// spinnerFrame is used for animation when generating report (0-3 for spinner animation)
+func PrintProgress(elapsed time.Duration, totalDuration time.Duration, stats *runner.ProgressStats, spinnerFrame int) {
 	// Calculate progress percentage
 	progress := float64(elapsed) / float64(totalDuration)
+	isComplete := progress >= 1.0
 	if progress > 1.0 {
 		progress = 1.0
 	}
 
-	// Create progress bar (50 characters wide)
-	barWidth := 50
+	// Create progress bar (40 characters wide for better display)
+	barWidth := 40
 	filled := int(progress * float64(barWidth))
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
@@ -79,22 +80,48 @@ func PrintProgress(elapsed time.Duration, totalDuration time.Duration, stats *ru
 		rps = float64(stats.TotalRequests) / elapsed.Seconds()
 	}
 
-	// Format elapsed and remaining time
+	// Format elapsed time
 	elapsedStr := formatDurationShort(elapsed)
-	remaining := totalDuration - elapsed
-	if remaining < 0 {
-		remaining = 0
-	}
-	remainingStr := formatDurationShort(remaining)
+	totalStr := formatDurationShort(totalDuration)
 
-	// Clear previous line and print progress
-	fmt.Fprintf(os.Stderr, "\r[%s] %.1f%% | Elapsed: %s | Remaining: %s | Requests: %d | Success: %d | Failed: %d | RPS: %.1f",
-		bar, progress*100, elapsedStr, remainingStr, stats.TotalRequests, stats.SuccessRequests, stats.FailedRequests, rps)
+	// Spinner characters for animation
+	spinnerChars := []string{"|", "/", "-", "\\"}
+
+	// ANSI escape code to clear the line: \033[2K clears entire line, \r returns to start
+	clearLine := "\033[2K\r"
+
+	// If test is complete, show "Generating report..." message with spinner
+	if isComplete {
+		spinner := spinnerChars[spinnerFrame%len(spinnerChars)]
+		fmt.Fprintf(os.Stderr, "%s[%s] 100.0%% | Generating report %s | Req: %d | ✓: %d | ✗: %d | RPS: %.1f   ",
+			clearLine, strings.Repeat("█", barWidth), spinner, stats.TotalRequests, stats.SuccessRequests, stats.FailedRequests, rps)
+	} else {
+		// Print progress on the same line (using clearLine to clear and return to start)
+		// Add spaces at the end to clear any remaining characters from previous updates
+		fmt.Fprintf(os.Stderr, "%s[%s] %.1f%% | %s/%s | Req: %d | ✓: %d | ✗: %d | RPS: %.1f   ",
+			clearLine, bar, progress*100, elapsedStr, totalStr,
+			stats.TotalRequests, stats.SuccessRequests, stats.FailedRequests, rps)
+	}
+
+	// Flush to ensure immediate display
+	os.Stderr.Sync()
+}
+
+// PrintGeneratingReport displays a one-time "Generating report..." message
+func PrintGeneratingReport(stats *runner.ProgressStats, rps float64) {
+	barWidth := 40
+	bar := strings.Repeat("█", barWidth)
+	// Clear line and print final message
+	fmt.Fprintf(os.Stderr, "\033[2K\r[%s] 100.0%% | Generating report... | Req: %d | ✓: %d | ✗: %d | RPS: %.1f   ",
+		bar, stats.TotalRequests, stats.SuccessRequests, stats.FailedRequests, rps)
+	os.Stderr.Sync()
 }
 
 // ClearProgress clears the progress line
 func ClearProgress() {
-	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 150))
+	// Clear the entire line by printing spaces and returning to start
+	fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 200))
+	os.Stderr.Sync()
 }
 
 // formatDuration formats a duration in a human-readable way
