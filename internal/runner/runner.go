@@ -16,6 +16,7 @@ type Config struct {
 	Method      string
 	Body        string
 	Headers     map[string]string
+	MaxRPS      int // Maximum requests per second (0 = no limit)
 }
 
 // RunResult contains both the stats instance (for progress monitoring) and the final summary
@@ -96,13 +97,20 @@ func RunWithStatsAndChannel(config Config, statsChan chan<- *Stats) (*RunResult,
 		}
 	}()
 
+	// Create rate limiter if MaxRPS is specified
+	var rateLimiter *RateLimiter
+	if config.MaxRPS > 0 {
+		rateLimiter = NewRateLimiter(config.MaxRPS)
+		defer rateLimiter.Stop()
+	}
+
 	// Use WaitGroup to wait for all workers to finish
 	var wg sync.WaitGroup
 
 	// Start workers
 	for i := 0; i < config.Concurrency; i++ {
 		wg.Add(1)
-		worker := NewWorker(client, request, results)
+		worker := NewWorker(client, request, results, rateLimiter)
 		go func() {
 			defer wg.Done()
 			worker.Start(ctx)

@@ -20,6 +20,7 @@ var (
 	headers     []string
 	jsonOutput  bool
 	outputFile  string
+	maxRPS      int
 )
 
 var runCmd = &cobra.Command{
@@ -44,6 +45,7 @@ func init() {
 	runCmd.Flags().StringArrayVarP(&headers, "headers", "H", []string{}, "HTTP headers (can be specified multiple times)")
 	runCmd.Flags().BoolVarP(&jsonOutput, "json", "j", false, "Output results in JSON format")
 	runCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path for JSON results (default: results/g0-result-YYYYMMDD-HHMMSS.json)")
+	runCmd.Flags().IntVarP(&maxRPS, "max-rps", "r", 0, "Maximum requests per second (0 = no limit)")
 
 	runCmd.MarkFlagRequired("url")
 }
@@ -78,6 +80,11 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 	// Print test configuration
 	printer.PrintTestStart(url, concurrency, testDuration)
 
+	// Validate max RPS if specified
+	if maxRPS < 0 {
+		return fmt.Errorf("max-rps must be greater than or equal to 0")
+	}
+
 	// Create and run the load test
 	config := runner.Config{
 		URL:         url,
@@ -86,6 +93,7 @@ func runLoadTest(cmd *cobra.Command, args []string) error {
 		Method:      method,
 		Body:        body,
 		Headers:     headerMap,
+		MaxRPS:      maxRPS,
 	}
 
 	// Channel to receive test result

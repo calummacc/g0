@@ -110,6 +110,7 @@ Flags:
   -H, --headers strings   HTTP headers (can be specified multiple times)
   -j, --json              Output results in JSON format
   -o, --output string     Output file path for JSON results (default: results/g0-result-YYYYMMDD-HHMMSS.json)
+  -r, --max-rps int      Maximum requests per second (0 = no limit)
 ```
 
 ### Examples
@@ -148,6 +149,15 @@ g0 run --url https://api.example.com --c 50 --d 10s --json --output my-results.j
 
 # JSON output to specific directory
 g0 run --url https://api.example.com --c 50 --d 10s --json --output reports/test-result.json
+```
+
+**Rate limiting (max RPS):**
+```bash
+# Limit to 100 requests per second
+g0 run --url https://api.example.com --c 50 --d 10s --max-rps 100
+
+# No rate limiting (default, workers send requests as fast as possible)
+g0 run --url https://api.example.com --c 50 --d 10s
 ```
 
 When using `--json`, the results are automatically saved to a file in the `results/` directory with a timestamp-based filename (e.g., `results/g0-result-20240101-120000.json`). You can also specify a custom output path using the `--output` flag. The JSON output includes all metrics in a structured format, making it easy to parse and integrate with other tools or scripts. Example output:
@@ -277,7 +287,7 @@ g0/
 ### v2 Features
 - [x] Real-time progress updates during test execution
 - [x] JSON output format option
-- [ ] Request rate limiting (e.g., max RPS)
+- [x] Request rate limiting (e.g., max RPS)
 - [ ] Support for multiple URLs/endpoints
 - [ ] Request timeout configuration
 - [ ] TLS/SSL configuration options

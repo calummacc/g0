@@ -8,17 +8,19 @@ import (
 
 // Worker sends HTTP requests in a loop until the context is cancelled
 type Worker struct {
-	client  *httpclient.Client
-	request httpclient.Request
-	results chan<- Result
+	client      *httpclient.Client
+	request     httpclient.Request
+	results     chan<- Result
+	rateLimiter *RateLimiter
 }
 
 // NewWorker creates a new worker
-func NewWorker(client *httpclient.Client, request httpclient.Request, results chan<- Result) *Worker {
+func NewWorker(client *httpclient.Client, request httpclient.Request, results chan<- Result, rateLimiter *RateLimiter) *Worker {
 	return &Worker{
-		client:  client,
-		request: request,
-		results: results,
+		client:      client,
+		request:     request,
+		results:     results,
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -36,6 +38,12 @@ func (w *Worker) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
+		}
+
+		// Wait for rate limiter token if rate limiting is enabled
+		if !w.rateLimiter.Wait(ctx) {
+			// Context cancelled or rate limiter stopped
+			return
 		}
 
 		// Send request
