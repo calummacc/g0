@@ -13,43 +13,6 @@ A minimal, high-performance HTTP load tester written in Go. Inspired by k6, but 
 
 ## Installation
 
-### Pre-built Packages
-
-Download pre-built binaries for your platform:
-
-- **macOS**: [g0-1.0.0.pkg](dist/g0-1.0.0.pkg) - macOS installer package
-- **Windows**: [g0-1.0.0-windows-amd64.zip](dist/g0-1.0.0-windows-amd64.zip) - Windows zip archive
-- **Linux**: [g0-1.0.0-linux-amd64.tar.gz](dist/g0-1.0.0-linux-amd64.tar.gz) - Linux tar.gz archive
-
-#### macOS Installation
-
-```bash
-# Install using the .pkg installer
-sudo installer -pkg g0-1.0.0.pkg -target /
-
-# Or use make
-make install-pkg
-```
-
-#### Windows Installation
-
-1. Download `g0-1.0.0-windows-amd64.zip`
-2. Extract the zip file
-3. Run `g0.exe` from Command Prompt or PowerShell
-
-#### Linux Installation
-
-```bash
-# Extract the archive
-tar -xzf g0-1.0.0-linux-amd64.tar.gz
-
-# Make it executable (if needed)
-chmod +x g0
-
-# Run it
-./g0 --help
-```
-
 ### Build from Source
 
 #### Prerequisites
