@@ -13,43 +13,6 @@ A minimal, high-performance HTTP load tester written in Go. Inspired by k6, but 
 
 ## Installation
 
-### Pre-built Packages
-
-Download pre-built binaries for your platform:
-
-- **macOS**: [g0-1.0.0.pkg](dist/g0-1.0.0.pkg) - macOS installer package
-- **Windows**: [g0-1.0.0-windows-amd64.zip](dist/g0-1.0.0-windows-amd64.zip) - Windows zip archive
-- **Linux**: [g0-1.0.0-linux-amd64.tar.gz](dist/g0-1.0.0-linux-amd64.tar.gz) - Linux tar.gz archive
-
-#### macOS Installation
-
-```bash
-# Install using the .pkg installer
-sudo installer -pkg g0-1.0.0.pkg -target /
-
-# Or use make
-make install-pkg
-```
-
-#### Windows Installation
-
-1. Download `g0-1.0.0-windows-amd64.zip`
-2. Extract the zip file
-3. Run `g0.exe` from Command Prompt or PowerShell
-
-#### Linux Installation
-
-```bash
-# Extract the archive
-tar -xzf g0-1.0.0-linux-amd64.tar.gz
-
-# Make it executable (if needed)
-chmod +x g0
-
-# Run it
-./g0 --help
-```
-
 ### Build from Source
 
 #### Prerequisites
@@ -139,12 +102,15 @@ g0 run --url https://api.example.com --c 100 --d 10s
 
 ```
 Flags:
-  -u, --url string        Target URL (required)
+  -u, --url stringArray  Target URL(s) - can be specified multiple times (required)
   -c, --concurrency int   Number of concurrent workers (default 10)
   -d, --duration string   Test duration (e.g., 10s, 1m, 30s) (default "10s")
   -m, --method string     HTTP method (default "GET")
   -b, --body string       Request body
   -H, --headers strings   HTTP headers (can be specified multiple times)
+  -j, --json              Output results in JSON format
+  -o, --output string     Output file path for JSON results (default: results/g0-result-YYYYMMDD-HHMMSS.json)
+  -r, --max-rps int      Maximum requests per second (0 = no limit)
 ```
 
 ### Examples
@@ -171,6 +137,94 @@ g0 run --url https://api.example.com \
   --headers "X-Custom-Header: value" \
   --c 200 \
   --d 1m
+```
+
+**JSON output format:**
+```bash
+# JSON output (automatically saved to results/ directory)
+g0 run --url https://api.example.com --c 50 --d 10s --json
+
+# JSON output with custom file path
+g0 run --url https://api.example.com --c 50 --d 10s --json --output my-results.json
+
+# JSON output to specific directory
+g0 run --url https://api.example.com --c 50 --d 10s --json --output reports/test-result.json
+```
+
+**Rate limiting (max RPS):**
+```bash
+# Limit to 100 requests per second
+g0 run --url https://api.example.com --c 50 --d 10s --max-rps 100
+
+# No rate limiting (default, workers send requests as fast as possible)
+g0 run --url https://api.example.com --c 50 --d 10s
+```
+
+**Multiple URLs/endpoints:**
+```bash
+# Test multiple endpoints with round-robin distribution
+g0 run --url https://api.example.com/v1/users --url https://api.example.com/v1/posts --url https://api.example.com/v1/comments -c 50 -d 10s
+
+# Test different endpoints with different status codes
+g0 run --url https://httpbin.org/get --url https://httpbin.org/status/200 --url https://httpbin.org/status/404 -c 20 -d 5s
+
+# Multiple URLs with rate limiting
+g0 run --url https://api.example.com/endpoint1 --url https://api.example.com/endpoint2 -c 50 -d 10s --max-rps 100
+```
+
+When multiple URLs are specified, requests are distributed in round-robin fashion across all endpoints. This allows you to test load balancing, different API endpoints, or compare performance across multiple services.
+
+When using `--json`, the results are automatically saved to a file in the `results/` directory with a timestamp-based filename (e.g., `results/g0-result-20240101-120000.json`). You can also specify a custom output path using the `--output` flag. The JSON output includes all metrics in a structured format, making it easy to parse and integrate with other tools or scripts. Example output:
+
+```json
+{
+  "metadata": {
+    "url": "https://api.example.com",
+    "method": "GET",
+    "concurrency": 50,
+    "duration": "10s",
+    "duration_ms": 10000,
+    "headers": {}
+  },
+  "metrics": {
+    "requests": {
+      "total": 12004,
+      "success": 11800,
+      "failed": 204,
+      "rps": 1200.4
+    },
+    "latency": {
+      "min": {
+        "value": "5.23ms",
+        "ms": 5.23
+      },
+      "max": {
+        "value": "85.12ms",
+        "ms": 85.12
+      },
+      "avg": {
+        "value": "12.45ms",
+        "ms": 12.45
+      },
+      "p90": {
+        "value": "20.34ms",
+        "ms": 20.34
+      },
+      "p95": {
+        "value": "24.56ms",
+        "ms": 24.56
+      },
+      "p99": {
+        "value": "40.78ms",
+        "ms": 40.78
+      }
+    },
+    "status_codes": {
+      "200": 11800,
+      "500": 204
+    }
+  }
+}
 ```
 
 ## Output Format
@@ -245,10 +299,10 @@ g0/
 ## Future Improvements (v2/v3)
 
 ### v2 Features
-- [ ] Real-time progress updates during test execution
-- [ ] JSON output format option
-- [ ] Request rate limiting (e.g., max RPS)
-- [ ] Support for multiple URLs/endpoints
+- [x] Real-time progress updates during test execution
+- [x] JSON output format option
+- [x] Request rate limiting (e.g., max RPS)
+- [x] Support for multiple URLs/endpoints
 - [ ] Request timeout configuration
 - [ ] TLS/SSL configuration options
 - [ ] Basic authentication support

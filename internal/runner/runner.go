@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -10,12 +11,13 @@ import (
 
 // Config holds the configuration for a load test
 type Config struct {
-	URL         string
+	URLs        []string // URLs to test (supports multiple endpoints)
 	Concurrency int
 	Duration    time.Duration
 	Method      string
 	Body        string
 	Headers     map[string]string
+	MaxRPS      int // Maximum requests per second (0 = no limit)
 }
 
 // RunResult contains both the stats instance (for progress monitoring) and the final summary
@@ -41,16 +43,16 @@ func RunWithStats(config Config) (*RunResult, error) {
 
 // RunWithStatsAndChannel executes a load test and optionally sends stats instance to a channel when created
 func RunWithStatsAndChannel(config Config, statsChan chan<- *Stats) (*RunResult, error) {
+	// Validate URLs
+	if len(config.URLs) == 0 {
+		return nil, fmt.Errorf("at least one URL is required")
+	}
+
 	// Create HTTP client
 	client := httpclient.New()
 
-	// Create request configuration
-	request := httpclient.Request{
-		Method:  config.Method,
-		URL:     config.URL,
-		Body:    config.Body,
-		Headers: config.Headers,
-	}
+	// Create URL rotator for round-robin distribution
+	urlRotator := NewURLRotator(config.URLs)
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), config.Duration)
@@ -96,13 +98,26 @@ func RunWithStatsAndChannel(config Config, statsChan chan<- *Stats) (*RunResult,
 		}
 	}()
 
+	// Create rate limiter if MaxRPS is specified
+	var rateLimiter *RateLimiter
+	if config.MaxRPS > 0 {
+		rateLimiter = NewRateLimiter(config.MaxRPS)
+		defer rateLimiter.Stop()
+	}
+
 	// Use WaitGroup to wait for all workers to finish
 	var wg sync.WaitGroup
 
 	// Start workers
 	for i := 0; i < config.Concurrency; i++ {
 		wg.Add(1)
-		worker := NewWorker(client, request, results)
+		// Create base request configuration (URL will be selected dynamically)
+		baseRequest := httpclient.Request{
+			Method:  config.Method,
+			Body:    config.Body,
+			Headers: config.Headers,
+		}
+		worker := NewWorker(client, baseRequest, results, rateLimiter, urlRotator)
 		go func() {
 			defer wg.Done()
 			worker.Start(ctx)
